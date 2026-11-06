@@ -24,7 +24,7 @@ Web vybere automaticky (`public/config.js`):
 1. Na https://supabase.com se přihlas přes GitHub a vytvoř nový projekt (region Frankfurt).
 2. V projektu otevři **SQL Editor → New query**, vlož celý soubor `supabase.sql` a dej **Run**.
 3. V **Project Settings → API** zkopíruj *Project URL* a klíč *anon / public* do `public/config.js`.
-4. Commit + push → GitHub Pages se samy přenasadí.
+4. Commit + `npm run deploy` (nahraje složku public/ do větve gh-pages, ze které běží web).
 
 Pozn.: free projekt na Supabase se po týdnu bez návštěv uspí – v dashboardu se jedním klikem probudí.
 
