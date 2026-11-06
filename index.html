@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trashlist — filmy a seriály hodnocené hovínky</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💩</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="topbar"><div class="ticker" id="ticker"></div></div>
+
+  <header class="nav">
+    <nav class="nav-left">
+      <a href="#/katalog?type=film" data-nav="film">Filmy</a>
+      <a href="#/katalog?type=serial" data-nav="serial">Seriály</a>
+      <a href="#/zebricky" data-nav="zebricky">Žebříčky</a>
+      <a href="#/lide" data-nav="lide">Lidi</a>
+    </nav>
+    <a class="logo" href="#/">💩 Trashlist</a>
+    <nav class="nav-right">
+      <button class="linkbtn" id="btn-search">Hledat</button>
+      <button class="linkbtn" id="btn-random">Co dneska?</button>
+      <button class="linkbtn" id="btn-add">+ Přidat</button>
+      <a href="#/muj" id="nav-me">Můj list</a>
+      <button class="linkbtn" id="btn-account">Účet</button>
+    </nav>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="footer">
+    <div class="footer-big">TRASHLIST</div>
+    <div class="footer-row">
+      <span>© 2026 Trashlist · hodnotíme hovínky od roku 2000</span>
+      <span>Plakáty: Wikipedie · Žádné hvězdičky nebyly zraněny</span>
+    </div>
+  </footer>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-box" id="modal-box"></div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="catalog.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
