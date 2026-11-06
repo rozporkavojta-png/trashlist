@@ -41,12 +41,90 @@
   const stats = (id) => STATS.get(id) || { avg: 0, n: 0 };
   const myList = () => (S.me && S.server.lists[S.me.name]) || {};
 
-  async function api(path, body) {
-    const opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, ...(S.me || {}) }) } : {};
+  // ---------- ukládání: Supabase (sdílené online) / lokální server / jen prohlížeč ----------
+  const CFG = window.TRASHLIST_CONFIG || {};
+  let MODE = CFG.supabaseUrl && CFG.supabaseKey ? "supabase" : "server"; // "local" se zjistí při startu
+
+  async function apiServer(path, body) {
+    const opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : { cache: "no-store" };
     const res = await fetch(path, opts);
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || "Něco se pokazilo");
     return j;
+  }
+
+  async function rpc(fn, args = {}) {
+    const res = await fetch(CFG.supabaseUrl.replace(/\/$/, "") + "/rest/v1/rpc/" + fn, {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json", apikey: CFG.supabaseKey, Authorization: "Bearer " + CFG.supabaseKey },
+      body: JSON.stringify(args),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((j && j.message) || "Databáze neodpovídá");
+    return j;
+  }
+  function apiSupabase(path, b) {
+    const auth = { p_name: b && b.name, p_token: b && b.token };
+    switch (path) {
+      case "/api/state": return rpc("tl_state");
+      case "/api/version": return rpc("tl_version").then((version) => ({ version }));
+      case "/api/register": return rpc("tl_register", { p_name: b.name, p_token: b.token || null });
+      case "/api/review": return rpc("tl_review", { ...auth, p_title_id: b.titleId, p_poops: b.poops, p_text: b.text || "" });
+      case "/api/review/delete": return rpc("tl_review_delete", { ...auth, p_id: b.id });
+      case "/api/review/like": return rpc("tl_review_like", { ...auth, p_id: b.id });
+      case "/api/title": return rpc("tl_title_add", { ...auth, p_data: b });
+      case "/api/list": return rpc("tl_list", { ...auth, p_title_id: b.titleId, p_status: b.status || null });
+    }
+  }
+
+  // Bez serveru (např. GitHub Pages bez databáze) – vše jen v tomto prohlížeči
+  function apiLocal(path, b) {
+    const db = JSON.parse(localStorage.getItem("trashlist-local-db") || '{"users":[],"reviews":[],"titles":[],"lists":{},"version":1}');
+    const save = () => { db.version = Date.now(); localStorage.setItem("trashlist-local-db", JSON.stringify(db)); };
+    const rid = () => Math.random().toString(16).slice(2, 14);
+    if (path === "/api/state") return Promise.resolve(db);
+    if (path === "/api/version") return Promise.resolve({ version: db.version });
+    if (path === "/api/register") {
+      const name = String(b.name || "").trim().slice(0, 24);
+      if (name.length < 2) return Promise.reject(new Error("Jméno musí mít aspoň 2 znaky"));
+      if (!db.users.some((u) => u.name.toLowerCase() === name.toLowerCase())) db.users.push({ name, joined: Date.now() });
+      save(); return Promise.resolve({ name, token: "local" });
+    }
+    const user = b.name;
+    if (path === "/api/review") {
+      let r = db.reviews.find((x) => x.titleId === b.titleId && x.user === user);
+      if (r) Object.assign(r, { poops: b.poops, text: b.text, ts: Date.now() });
+      else db.reviews.push((r = { id: rid(), titleId: b.titleId, user, poops: b.poops, text: b.text || "", ts: Date.now(), likes: [] }));
+      save(); return Promise.resolve(r);
+    }
+    if (path === "/api/review/delete") { db.reviews = db.reviews.filter((r) => !(r.id === b.id && r.user === user)); save(); return Promise.resolve({}); }
+    if (path === "/api/review/like") {
+      const r = db.reviews.find((x) => x.id === b.id);
+      if (r) { const i = r.likes.indexOf(user); i >= 0 ? r.likes.splice(i, 1) : r.likes.push(user); }
+      save(); return Promise.resolve({});
+    }
+    if (path === "/api/title") {
+      if (!String(b.title || "").trim()) return Promise.reject(new Error("Chybí název"));
+      const t = { id: "u-" + rid(), title: b.title.trim(), year: +b.year, type: b.type, genres: b.genres, platform: b.platform,
+        img: /^https?:\/\//.test(b.img || "") ? b.img : null, addedBy: user, ts: Date.now() };
+      db.titles.push(t); save(); return Promise.resolve(t);
+    }
+    if (path === "/api/list") {
+      const l = (db.lists[user] = db.lists[user] || {});
+      if (b.status) l[b.titleId] = { status: b.status, ts: Date.now() }; else delete l[b.titleId];
+      save(); return Promise.resolve({});
+    }
+  }
+
+  async function api(path, body) {
+    const b = body ? { ...body, ...(S.me || {}) } : null;
+    if (MODE === "supabase") return apiSupabase(path, b || {});
+    if (MODE === "local") return apiLocal(path, b || {});
+    return apiServer(path, b);
+  }
+  async function detectMode() {
+    if (MODE === "supabase") return;
+    try { await apiServer("/api/version"); MODE = "server"; } catch (_) { MODE = "local"; }
   }
   async function refresh() {
     try {
@@ -560,6 +638,7 @@
       (a.dataset.nav === "film" && p === "/katalog" && params.get("type") === "film") ||
       (a.dataset.nav === "serial" && p === "/katalog" && params.get("type") === "serial") ||
       a.dataset.nav === p.slice(1)));
+    document.querySelectorAll(".tabbar [data-tab]").forEach((a) => a.classList.toggle("active", a.dataset.tab === (p || "/")));
     updateNav();
     if (soft) window.scrollTo(0, y); else window.scrollTo(0, 0);
   }
@@ -613,6 +692,10 @@
 
   // ---------- start ----------
   (async () => {
+    await detectMode();
+    if (MODE === "local") {
+      $(".nav").insertAdjacentHTML("afterend", `<div class="notice">⚠️ Sdílená databáze ještě není připojená – tvoje hodnocení se zatím ukládají jen v tomhle prohlížeči.</div>`);
+    }
     await refresh();
     renderTicker();
     route();
