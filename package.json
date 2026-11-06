@@ -1,0 +1,11 @@
+{
+  "name": "trashlist",
+  "version": "1.0.0",
+  "description": "Trashlist – filmy a seriály hodnocené hovínky",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "catalog": "node scripts/build-catalog.js"
+  },
+  "engines": { "node": ">=18" }
+}
