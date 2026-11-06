@@ -4,6 +4,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, "public");
@@ -163,7 +164,13 @@ function serveStatic(req, res, url) {
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("404"); }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
+    const headers = { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" };
+    // Katalog má několik MB → posílat zkomprimovaně
+    if (/\.(js|css|html|json)$/.test(file) && /gzip/.test(req.headers["accept-encoding"] || "")) {
+      headers["Content-Encoding"] = "gzip";
+      data = zlib.gzipSync(data);
+    }
+    res.writeHead(200, headers);
     res.end(data);
   });
 }

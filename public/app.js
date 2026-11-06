@@ -9,21 +9,36 @@
     filters: { type: "all", genre: "all", platform: "all", decade: "all", q: "", sort: "new" },
   };
   const POOP_LABELS = ["", "Totální odpad", "Slabota", "Ujde to", "Dobrý", "Pecka"];
-  const GENRE_ORDER = ["Akce", "Komedie", "Drama", "Krimi", "Thriller", "Horor", "Sci-fi", "Fantasy", "Animovaný", "Romantický", "Dobrodružný", "Historický", "Válečný", "Muzikál", "Western", "Rodinný"];
+  const GENRE_ORDER = ["Akce", "Komedie", "Drama", "Krimi", "Thriller", "Horor", "Sci-fi", "Fantasy", "Animovaný", "Romantický", "Dobrodružný", "Historický", "Válečný", "Dokument", "Muzikál", "Western", "Rodinný", "Sportovní", "Reality", "Ostatní"];
+  const MAIN_PLATFORMS = ["Netflix", "HBO Max", "Disney+", "Prime Video", "Apple TV+", "SkyShowtime", "Voyo", "iVysílání", "Kino"];
+  const PAGE = 60;
+  const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
   const $ = (s, el = document) => el.querySelector(s);
   const app = $("#app");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   // ---------- data ----------
-  const allTitles = () => [...window.CATALOG, ...S.server.titles];
-  const byId = (id) => allTitles().find((t) => t.id === id);
-  const reviewsOf = (id) => S.server.reviews.filter((r) => r.titleId === id).sort((a, b) => b.ts - a.ts);
-  function stats(id) {
-    const rs = S.server.reviews.filter((r) => r.titleId === id);
-    if (!rs.length) return { avg: 0, n: 0 };
-    return { avg: rs.reduce((s, r) => s + r.poops, 0) / rs.length, n: rs.length };
+  // Katalog má desítky tisíc titulů → indexy pro rychlost
+  window.CATALOG.forEach((t) => (t._s = norm(t.title + " " + (t.orig || ""))));
+  let ALL = window.CATALOG, BY_ID = new Map(), STATS = new Map();
+  function reindex() {
+    S.server.titles.forEach((t) => { t._s = norm(t.title); t.pop = t.pop || 500; });
+    ALL = [...S.server.titles, ...window.CATALOG];
+    BY_ID = new Map(ALL.map((t) => [t.id, t]));
+    STATS = new Map();
+    S.server.reviews.forEach((r) => {
+      const s = STATS.get(r.titleId) || { sum: 0, n: 0 };
+      s.sum += r.poops; s.n++; STATS.set(r.titleId, s);
+    });
+    STATS.forEach((s) => (s.avg = s.sum / s.n));
   }
+  reindex();
+  const allTitles = () => ALL;
+  const popular = (n) => ALL.slice(0, n); // CATALOG je seřazený podle známosti
+  const byId = (id) => BY_ID.get(id);
+  const reviewsOf = (id) => S.server.reviews.filter((r) => r.titleId === id).sort((a, b) => b.ts - a.ts);
+  const stats = (id) => STATS.get(id) || { avg: 0, n: 0 };
   const myList = () => (S.me && S.server.lists[S.me.name]) || {};
 
   async function api(path, body) {
@@ -36,6 +51,7 @@
   async function refresh() {
     try {
       S.server = await api("/api/state");
+      reindex();
       // Pokud mě server nezná (smazaná DB), odhlásit
       if (S.me && !S.server.users.some((u) => u.name === S.me.name)) logout(true);
     } catch (e) { console.warn(e); }
@@ -109,9 +125,10 @@
   // ---------- stránky ----------
   function viewHome() {
     const titles = allTitles();
-    const withImg = titles.filter((t) => t.img);
+    const withImg = popular(400).filter((t) => t.img);
     const collage = [...withImg].sort(() => Math.random() - 0.5).slice(0, 40);
-    const fresh = titles.filter((t) => t.year >= 2024).sort((a, b) => b.year - a.year);
+    const fresh = titles.filter((t) => t.year >= 2025 && t.img).slice(0, 24).sort((a, b) => b.year - a.year);
+    const freshSeries = titles.filter((t) => t.year >= 2023 && t.type === "serial" && t.img).slice(0, 20);
     const rated = titles.map((t) => ({ t, ...stats(t.id) })).filter((x) => x.n);
     const top = [...rated].sort((a, b) => b.avg - a.avg || b.n - a.n).slice(0, 12);
     const trash = [...rated].sort((a, b) => a.avg - b.avg || b.n - a.n).slice(0, 12);
@@ -123,7 +140,7 @@
       <section class="hero">
         <div class="hero-collage">${collage.map((t) => `<div class="pc"><img src="${esc(t.img)}" alt="" loading="lazy"></div>`).join("")}</div>
         <div class="hero-inner">
-          <div class="eyebrow" style="color:#e9e2d4">Filmy & seriály 2000 — 2026 · Netflix · HBO Max · Disney+ · Prime · Apple TV+</div>
+          <div class="eyebrow" style="color:#e9e2d4">${titles.length.toLocaleString("cs-CZ")} filmů & seriálů 2000 — 2026 · Netflix · HBO Max · Disney+ · Prime · Apple TV+ · SkyShowtime · Voyo · kino</div>
           <h1 class="hero-title">Trashlist</h1>
           <div class="hero-bottom">
             <div class="hero-text">Hodnoť filmy a seriály hovínky. Jedno 💩 = totální odpad, pět 💩 = pecka. Piš komentáře a koukej, co vidí ostatní.</div>
@@ -138,6 +155,11 @@
       <section class="section">
         <div class="section-head"><h2 class="big">Novinky</h2><a class="more" href="#/katalog?sort=new">Zobrazit vše</a></div>
         <div class="row">${fresh.map((t) => card(t)).join("")}</div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h2 class="mid">Seriály, o kterých se mluví</h2><a class="more" href="#/katalog?type=serial">Všechny seriály</a></div>
+        <div class="row">${freshSeries.map((t) => card(t)).join("")}</div>
       </section>
 
       <section class="section">
@@ -175,7 +197,7 @@
       const imgs = list.filter((t) => t.img).slice(0, 3);
       return `<a class="genre-tile" href="#/katalog?genre=${encodeURIComponent(g)}">
         <div class="gimgs">${imgs.map((t) => `<img src="${esc(t.img)}" alt="" loading="lazy">`).join("")}</div>
-        <small>${list.length} titulů</small><span>${esc(g)}</span></a>`;
+        <small>${list.length.toLocaleString("cs-CZ")} titulů</small><span>${esc(g)}</span></a>`;
     }).join("");
   }
 
@@ -183,10 +205,11 @@
     const f = S.filters;
     ["type", "genre", "platform", "decade", "sort"].forEach((k) => { if (params.has(k)) f[k] = params.get(k); });
     if (params.has("q")) f.q = params.get("q");
-    if (!params.toString()) Object.assign(f, { type: "all", genre: "all", platform: "all", decade: "all", q: "", sort: "new" });
+    if (!params.toString()) Object.assign(f, { type: "all", genre: "all", platform: "all", decade: "all", q: "", sort: "pop" });
+    else if (!params.has("sort")) f.sort = "pop";
 
     const titles = allTitles();
-    const platforms = [...new Set(titles.map((t) => t.platform))].sort();
+    const platforms = MAIN_PLATFORMS;
     const genres = GENRE_ORDER.filter((g) => titles.some((t) => t.genres.includes(g)));
     const heading = f.type === "film" ? "Filmy" : f.type === "serial" ? "Seriály" : f.genre !== "all" ? f.genre : "Katalog";
 
@@ -198,12 +221,13 @@
           <select class="input" id="f-type">
             <option value="all">Filmy i seriály</option><option value="film">Jen filmy</option><option value="serial">Jen seriály</option>
           </select>
-          <select class="input" id="f-platform"><option value="all">Všechny platformy</option>${platforms.map((p) => `<option>${esc(p)}</option>`).join("")}</select>
+          <select class="input" id="f-platform"><option value="all">Všechny platformy</option>${platforms.map((p) => `<option>${esc(p)}</option>`).join("")}<option value="tv">Ostatní TV stanice</option></select>
           <select class="input" id="f-decade">
             <option value="all">Všechny roky</option><option value="2000">2000–2009</option><option value="2010">2010–2019</option><option value="2020">2020–2026</option>
+            ${Array.from({ length: 27 }, (_, i) => 2026 - i).map((y) => `<option value="y${y}">${y}</option>`).join("")}
           </select>
           <select class="input" id="f-sort">
-            <option value="new">Nejnovější</option><option value="old">Nejstarší</option><option value="az">A–Z</option>
+            <option value="pop">Nejznámější</option><option value="new">Nejnovější</option><option value="old">Nejstarší</option><option value="az">A–Z</option>
             <option value="best">Nejvíc hovínek (nejlepší)</option><option value="worst">Nejmíň hovínek (trash)</option><option value="most">Nejvíc hodnocení</option>
           </select>
           <span class="count" id="f-count"></span>
@@ -213,31 +237,45 @@
           ${genres.map((g) => `<button class="chip ${f.genre === g ? "on" : ""}" data-genre="${esc(g)}">${esc(g)}</button>`).join("")}
         </div>
         <div class="grid" id="f-grid"></div>
+        <div style="text-align:center;margin-top:34px"><button class="btn solid" id="f-more" hidden>Načíst další</button></div>
       </section>`;
     $("#f-type").value = f.type; $("#f-platform").value = f.platform; $("#f-decade").value = f.decade; $("#f-sort").value = f.sort;
 
+    let list = [], shown = 0;
+    const more = () => {
+      $("#f-grid").insertAdjacentHTML("beforeend", list.slice(shown, shown + PAGE).map((t) => card(t)).join(""));
+      shown += PAGE;
+      $("#f-more").hidden = shown >= list.length;
+      $("#f-more").textContent = `Načíst další (zbývá ${(list.length - shown).toLocaleString("cs-CZ")})`;
+    };
+    const decadeOk = (t) => f.decade === "all" ? true : f.decade[0] === "y" ? t.year === +f.decade.slice(1)
+      : t.year >= +f.decade && t.year <= +f.decade + (f.decade === "2020" ? 6 : 9);
     const draw = () => {
-      const q = f.q.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-      let list = titles.filter((t) =>
+      const q = norm(f.q.trim());
+      list = titles.filter((t) =>
         (f.type === "all" || t.type === f.type) &&
         (f.genre === "all" || t.genres.includes(f.genre)) &&
-        (f.platform === "all" || t.platform === f.platform) &&
-        (f.decade === "all" || (t.year >= +f.decade && t.year <= +f.decade + (f.decade === "2020" ? 6 : 9))) &&
-        (!q || t.title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(q)));
+        (f.platform === "all" || (f.platform === "tv" ? !MAIN_PLATFORMS.includes(t.platform) : t.platform === f.platform)) &&
+        decadeOk(t) && (!q || t._s.includes(q)));
       const sorters = {
-        new: (a, b) => b.year - a.year || a.title.localeCompare(b.title, "cs"),
-        old: (a, b) => a.year - b.year,
+        pop: (a, b) => b.pop - a.pop,
+        new: (a, b) => b.year - a.year || b.pop - a.pop,
+        old: (a, b) => a.year - b.year || b.pop - a.pop,
         az: (a, b) => a.title.localeCompare(b.title, "cs"),
-        best: (a, b) => stats(b.id).avg - stats(a.id).avg || stats(b.id).n - stats(a.id).n,
-        worst: (a, b) => (stats(a.id).n ? stats(a.id).avg : 9) - (stats(b.id).n ? stats(b.id).avg : 9),
-        most: (a, b) => stats(b.id).n - stats(a.id).n,
+        best: (a, b) => stats(b.id).avg - stats(a.id).avg || stats(b.id).n - stats(a.id).n || b.pop - a.pop,
+        worst: (a, b) => (stats(a.id).n ? stats(a.id).avg : 9) - (stats(b.id).n ? stats(b.id).avg : 9) || b.pop - a.pop,
+        most: (a, b) => stats(b.id).n - stats(a.id).n || b.pop - a.pop,
       };
-      list.sort(sorters[f.sort] || sorters.new);
-      $("#f-count").textContent = `${list.length} titulů`;
-      $("#f-grid").innerHTML = list.length ? list.map((t) => card(t)).join("")
+      list.sort(sorters[f.sort] || sorters.pop);
+      $("#f-count").textContent = `${list.length.toLocaleString("cs-CZ")} titulů`;
+      shown = 0;
+      $("#f-grid").innerHTML = list.length ? ""
         : `<div class="empty" style="grid-column:1/-1"><div class="big">Nic</div>Nic takového tu není. <a class="more" href="#" data-action="add">Přidej to!</a></div>`;
+      more();
     };
-    $("#f-q").addEventListener("input", (e) => { f.q = e.target.value; draw(); });
+    $("#f-more").addEventListener("click", more);
+    let qTimer;
+    $("#f-q").addEventListener("input", (e) => { f.q = e.target.value; clearTimeout(qTimer); qTimer = setTimeout(draw, 150); });
     [["#f-type", "type"], ["#f-platform", "platform"], ["#f-decade", "decade"], ["#f-sort", "sort"]].forEach(([sel, k]) =>
       $(sel).addEventListener("change", (e) => { f[k] = e.target.value; draw(); }));
     $("#f-genres").addEventListener("click", (e) => {
@@ -361,12 +399,13 @@
     const st = stats(id);
     const my = S.me && S.server.reviews.find((r) => r.titleId === id && r.user === S.me.name);
     const inList = myList()[id];
-    const similar = allTitles().filter((x) => x.id !== id && x.genres.some((g) => t.genres.includes(g))).sort(() => Math.random() - .5).slice(0, 6);
+    const similar = popular(2000).filter((x) => x.img).filter((x) => x.id !== id && x.genres.some((g) => t.genres.includes(g))).sort(() => Math.random() - .5).slice(0, 6);
     openModal(`<div class="detail">
       <div class="detail-poster">${posterImg(t)}</div>
       <div class="detail-body">
         <div class="eyebrow">${typeLabel(t)} · ${t.year} · ${esc(t.platform)}${t.addedBy ? ` · přidal ${esc(t.addedBy)}` : ""}</div>
         <h2 class="mid">${esc(t.title)}</h2>
+        ${t.orig ? `<div class="eyebrow" style="margin-top:6px">${esc(t.orig)}</div>` : ""}
         <div class="meta-line">${t.genres.map((g) => `<a class="tag" href="#/katalog?genre=${encodeURIComponent(g)}">${esc(g)}</a>`).join("")}</div>
         <div class="score" id="d-score"></div>
         <div class="list-btns">
@@ -479,7 +518,7 @@
 
   // ---------- ruleta ----------
   function openRandom(genre = "all") {
-    const pool = allTitles().filter((t) => genre === "all" || t.genres.includes(genre)).filter((t) => !(myList()[t.id] && myList()[t.id].status === "seen"));
+    const pool = popular(3000).filter((t) => t.img).filter((t) => genre === "all" || t.genres.includes(genre)).filter((t) => !(myList()[t.id] && myList()[t.id].status === "seen"));
     const t = pool[Math.floor(Math.random() * pool.length)];
     if (!t) return toast("Není z čeho vybírat");
     const genres = GENRE_ORDER.filter((g) => allTitles().some((x) => x.genres.includes(g)));

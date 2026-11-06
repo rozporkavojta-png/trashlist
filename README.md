@@ -1,6 +1,6 @@
 # 💩 Trashlist
 
-Web na hodnocení filmů a seriálů (2000–2026) – místo hvězdiček hovínka.
+Web na hodnocení filmů a seriálů (2000–2026, ~15 700 titulů z Wikidat – Netflix, HBO Max, Disney+, Prime, Apple TV+, SkyShowtime, Voyo, kino…) – místo hvězdiček hovínka.
 
 - registrace jen jménem, hodnocení 1–5 💩 + komentář
 - katalog s plakáty, filtry (žánr, platforma, roky, typ), hledání, řazení
